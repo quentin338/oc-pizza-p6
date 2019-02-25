@@ -15,7 +15,12 @@ INGREDIENTS = "Coulis de tomate,Tabasco,Baparella,Oignons,Poivrons,Poulet,Crème
               "Lardons".split(",")
 
 PIZZERIAS_OWNER = 'OC Pizza'
+NUMBER_OF_TYPE_EMPLOYEES = 5  # Livreur/Responsable Commande/Pizzaïolo etc...
 NUMBER_OF_PIZZERIAS = 5
+NUMBER_OF_INGREDIENTS = 10  # Max 22
+NUMBER_OF_PIZZAS = 10  # Max 22
+NUMBER_OF_CLIENTS = 20
+NUMBER_OF_COMMANDES = 20
 
 fake = Faker('fr_FR')
 
@@ -101,9 +106,8 @@ def adresses_creation(db, number):
                               })
 
     # Addresses of clients.
+    # As many addresses as clients. A client can have several addresses. So some clients don't have any address.
     for _ in range(0, number):
-        # rdm_client_id = random.choice(client_ids)
-        # client_ids.remove(rdm_client_id)
         fake_adresses.append({'client_id': random.choice(client_ids),
                               'code_postal': f'{random.randint(1000, 99000):05}',
                               'ville': fake.city(),
@@ -119,8 +123,7 @@ def recettes_creation(db):
     pizza_ids = _get_table_ids(db, 'pizza')
 
     for _ in range(0, len(pizza_ids)):
-        rdm_pizza_id = random.choice(pizza_ids)
-        pizza_ids.remove(rdm_pizza_id)
+        rdm_pizza_id = pizza_ids.pop(random.randrange(len(pizza_ids)))
         fake_recettes.append({'recette': fake.text(max_nb_chars=500),
                               'pizza_id': rdm_pizza_id})
 
@@ -139,10 +142,9 @@ def pizzerias_creation(db):
 
     # Generating pizzerias based on the addresses we created specifically in adresses_creation()
     for _ in range(0, NUMBER_OF_PIZZERIAS):
-        adresse_id = random.choice(oc_adresse_ids)
+        adresse_id = oc_adresse_ids.pop(random.randrange(len(oc_adresse_ids)))
         fake_pizzerias.append({'nom': fake.sentence(nb_words=2),
                                'adresse_id': adresse_id})
-        oc_adresse_ids.remove(adresse_id)
 
     return fake_pizzerias
 
@@ -243,12 +245,10 @@ def panier_creation(db, number):
     commande_ids = _get_table_ids(db, 'commande')
 
     for _ in range(0, number):
-        commande_id = random.choice(commande_ids)
-        commande_ids.remove(commande_id)
+        commande_id = commande_ids.pop(random.randrange(len(commande_ids)))
         pizza_ids_copy = pizza_ids.copy()  # To respect the UNIQUE constraint of one pizza type per command
         for _ in range(0, random.randint(0, 3)):  # Between one and three pizzas type per panier
-            pizza = random.choice(pizza_ids_copy)
-            pizza_ids_copy.remove(pizza)
+            pizza = pizza_ids_copy.pop(random.randrange(len(pizza_ids_copy)))
             quantite = random.randint(1, 10)
             prix = _get_total_sum(db, pizza, quantite)
 
@@ -258,6 +258,25 @@ def panier_creation(db, number):
                                  'prix': prix})
 
     return fake_paniers
+
+
+def livraison_creation(db):
+    fake_livraisons = []
+    commandes_ids = _get_table_ids(db, 'commande')
+    factures_ids = _get_table_ids(db, 'facture')
+    livreur_ids = _get_table_ids(db, 'employe')
+
+    for _ in range(0, NUMBER_OF_COMMANDES):
+        rdm_commande = commandes_ids.pop(random.randrange(len(commandes_ids)))
+        rdm_facture = factures_ids.pop(random.randrange(len(factures_ids)))
+
+        fake_livraisons.append({'date': fake.date_this_decade(),
+                                'commande_numero': rdm_commande,
+                                'facture_numero': rdm_facture,
+                                'livreur_id': random.choice(livreur_ids)
+                                })
+
+    return fake_livraisons
 
 
 def _get_total_sum(db, pizza, quantity):
@@ -273,7 +292,7 @@ def _get_table_ids(db, table):
     rows = db.query(f'SELECT * from {table}')
     try:
         ids = [row.id for row in rows]
-    except AttributeError:  # For commande table
+    except AttributeError:  # For commande/facture table
         ids = [row.numero for row in rows]
 
     return ids
@@ -282,22 +301,22 @@ def _get_table_ids(db, table):
 def main():
     db = records.Database(f'postgres://{USERNAME}:{PASSWORD}@localhost/{DB_NAME}')
 
-    fake_clients = clients_creation(10)
+    fake_clients = clients_creation(NUMBER_OF_CLIENTS)
     db.bulk_query('INSERT INTO client (nom, prenom, mail) VALUES (:nom, :prenom, :mail)', fake_clients)
 
-    fake_ingredients = ingredients_creation(10)
+    fake_ingredients = ingredients_creation(NUMBER_OF_INGREDIENTS)
     db.bulk_query('INSERT INTO ingredient (nom) VALUES (:nom)', fake_ingredients)
 
-    fake_pizzas = pizzas_creation(10)
+    fake_pizzas = pizzas_creation(NUMBER_OF_PIZZAS)
     db.bulk_query('INSERT INTO pizza (nom, prix) VALUES (:nom, :prix)', fake_pizzas)
 
-    fake_type_employe = type_employe_creation(5)
+    fake_type_employe = type_employe_creation(NUMBER_OF_TYPE_EMPLOYEES)
     db.bulk_query('INSERT INTO type_employe (nom_type) VALUES (:nom_type)', fake_type_employe)
 
-    fake_factures = factures_creation(10)
+    fake_factures = factures_creation(NUMBER_OF_COMMANDES)
     db.bulk_query('INSERT INTO facture (date, payee, lien) VALUES (:date, :payee, :lien)', fake_factures)
 
-    fake_adresses = adresses_creation(db, 10)
+    fake_adresses = adresses_creation(db, NUMBER_OF_CLIENTS)
     db.bulk_query('INSERT INTO adresse_livraison (client_id, code_postal, ville, rue, numero_habitation)'
                   'VALUES (:client_id, :code_postal, :ville, :rue, :numero_habitation)', fake_adresses)
 
@@ -323,13 +342,17 @@ def main():
     db.bulk_query('INSERT INTO composition (pizza_id, ingredient_id, quantite)'
                   'VALUES (:pizza_id, :ingredient_id, :quantite)', fake_compositions)
 
-    fake_commandes = commande_creation(db, 20)
+    fake_commandes = commande_creation(db, NUMBER_OF_COMMANDES)
     db.bulk_query('INSERT INTO commande (client_id, adresse_livraison_id, pizzeria_id, responsable_id)'
                   'VALUES (:client_id, :adresse_livraison_id, :pizzeria_id, :responsable_id)', fake_commandes)
 
-    fake_paniers = panier_creation(db, 20)
+    fake_paniers = panier_creation(db, NUMBER_OF_COMMANDES)
     db.bulk_query('INSERT INTO panier (type_pizza, numero_commande, quantite, prix)'
                   'VALUES (:type_pizza, :numero_commande, :quantite, :prix)', fake_paniers)
+
+    fake_livraisons = livraison_creation(db)
+    db.bulk_query('INSERT INTO livraison (date, commande_numero, facture_numero, livreur_id)'
+                  'VALUES (:date, :commande_numero, :facture_numero, :livreur_id)', fake_livraisons)
 
 
 if __name__ == '__main__':
