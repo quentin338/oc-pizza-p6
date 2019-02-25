@@ -93,8 +93,8 @@ def factures_creation(number):
 def adresses_creation(db, number):
     fake_adresses = []
     client_ids = _get_table_ids(db, 'client')
-    oc_pizza_id = db.query(f"SELECT * FROM client WHERE nom = '{PIZZERIAS_OWNER}'")[0]['id']
-    client_ids.remove(oc_pizza_id)  # We remove the client OC Pizza as the addresses will be pizzerias
+    oc_pizza_id = db.query("SELECT * FROM client WHERE nom = :owner", owner=PIZZERIAS_OWNER)
+    client_ids.remove(oc_pizza_id.first().id)  # We remove the client OC Pizza as the addresses will be pizzerias
 
     # We are creating the addresses of the pizzerias that'll be used in the pizzeria table
     for _ in range(0, NUMBER_OF_PIZZERIAS):
@@ -134,9 +134,10 @@ def pizzerias_creation(db):
     fake_pizzerias = []
 
     # Getting the id of OC Pizza
-    oc_client_id = db.query(f"SELECT * FROM client WHERE nom = '{PIZZERIAS_OWNER}'")[0].id
+    oc_client_id = db.query("SELECT * FROM client WHERE nom = :owner", owner=PIZZERIAS_OWNER)
     # Getting the addresses linked to the id
-    oc_adresses = db.query(f"SELECT * FROM adresse_livraison WHERE client_id = {oc_client_id}")
+    oc_adresses = db.query("SELECT * FROM adresse_livraison WHERE client_id = :oc_id",
+                           oc_id=oc_client_id.first().id)
 
     oc_adresse_ids = [row.id for row in oc_adresses]
 
@@ -215,24 +216,28 @@ def composition_creation(db):
 
 def commande_creation(db, number):
     fake_commandes = []
-    oc_pizza_id = db.query(f"SELECT * FROM client WHERE nom = '{PIZZERIAS_OWNER}'")[0]['id']
-    pizzerias_ids = _get_table_ids(db, 'pizzeria')
+    oc_pizza_id = db.query("SELECT * FROM client WHERE nom = :owner", owner=PIZZERIAS_OWNER)
+    client_ids = _get_table_ids(db, 'client')
+    client_ids.remove(oc_pizza_id.first().id)
     responsable_ids = _get_table_ids(db, 'employe')
 
-    # We got the tuple (adresse_id, client_id) from adresse_livraison
-    # We are doing it this way only for demonstrating purpose. As the good way to do it would be to pick
-    # a random address based on the client_id. As not all clients have adresses, it'd make us create a while loop
-    # and a try/except IndexError block (random.choice on an empty list) to pick a valid client (who has an address).
-    adresses_client_ids = db.query(f"SELECT id, client_id FROM adresse_livraison WHERE client_id != '{oc_pizza_id}'")
-    adresse_id_client_id = [(row['id'], row['client_id']) for row in adresses_client_ids]
-
     for _ in range(0, number):
-        # Pick a random tuple (adresse_id, client_id (corresponding to the address))
-        adresse_id, client_id = random.choice(adresse_id_client_id)
+        responsable_id = random.choice(responsable_ids)
+        # Findind in which pizzeria the employe is working
+        pizzeria_id_query = db.query("SELECT pizzeria_id FROM employe WHERE id = :responsable_id",
+                                     responsable_id=responsable_id)
+        pizzeria_id = pizzeria_id_query.first().pizzeria_id
+
+        adresse_ids = []
+        while not adresse_ids:  # In case the client doesn't have any address
+            client_id = random.choice(client_ids)
+            adresse_ids = db.query("SELECT id from adresse_livraison WHERE client_id = :client_id",
+                                   client_id=client_id)
+            adresse_ids = [row.id for row in adresse_ids]  # Empty if no address corresponding to the client
 
         fake_commandes.append({'client_id': client_id,
-                               'adresse_livraison_id': adresse_id,
-                               'pizzeria_id': random.choice(pizzerias_ids),
+                               'adresse_livraison_id': random.choice(adresse_ids),
+                               'pizzeria_id': pizzeria_id,
                                'responsable_id': random.choice(responsable_ids)
                                })
 
@@ -247,7 +252,7 @@ def panier_creation(db, number):
     for _ in range(0, number):
         commande_id = commande_ids.pop(random.randrange(len(commande_ids)))
         pizza_ids_copy = pizza_ids.copy()  # To respect the UNIQUE constraint of one pizza type per command
-        for _ in range(0, random.randint(0, 3)):  # Between one and three pizzas type per panier
+        for _ in range(0, random.randint(0, 3)):  # Between one and three paniers (aka pizza type) per command
             pizza = pizza_ids_copy.pop(random.randrange(len(pizza_ids_copy)))
             quantite = random.randint(1, 10)
             prix = _get_total_sum(db, pizza, quantite)
@@ -280,7 +285,7 @@ def livraison_creation(db):
 
 
 def _get_total_sum(db, pizza, quantity):
-    price_query = db.query(f"SELECT prix from pizza WHERE id = '{pizza}'")
+    price_query = db.query("SELECT prix from pizza WHERE id = :pizza", pizza=pizza)
     price = [row['prix'] for row in price_query]
     price = float(*price)
     price = price * quantity
