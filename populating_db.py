@@ -100,8 +100,10 @@ def adresses_creation(db, number):
                               'numero_habitation': fake.building_number()
                               })
 
-    # Addresses of clients
+    # Addresses of clients.
     for _ in range(0, number):
+        # rdm_client_id = random.choice(client_ids)
+        # client_ids.remove(rdm_client_id)
         fake_adresses.append({'client_id': random.choice(client_ids),
                               'code_postal': f'{random.randint(1000, 99000):05}',
                               'ville': fake.city(),
@@ -184,7 +186,7 @@ def stock_creation(db):
             if fake.boolean(chance_of_getting_true=75):  # To add some diversity between pizzerias
                 fake_stocks.append({'pizzeria_id': pizzeria_id,
                                     'ingredient_id': ingredient_id,
-                                    'quantite': f'{random.uniform(1, 999):.6}'  # Between 1 and 999kg in stock
+                                    'quantite': f'{random.uniform(1, 999):.6}'  # Between 1/999kg in stock
                                     })
             else:
                 pass
@@ -207,6 +209,32 @@ def composition_creation(db):
                                       })
 
     return fake_compositions
+
+
+def commande_creation(db, number):
+    fake_commandes = []
+    oc_pizza_id = db.query(f"SELECT * FROM client WHERE nom = '{PIZZERIAS_OWNER}'")[0]['id']
+    pizzerias_ids = _get_table_ids(db, 'pizzeria')
+    responsable_ids = _get_table_ids(db, 'employe')
+
+    # We got the tuple (adresse_id, client_id) from adresse_livraison
+    # We are doing it this way only for demonstrating purpose. As the good way to do it would be to pick
+    # a random address based on the client_id. As not all clients have adresses, it'd make us create a while loop
+    # and a try/except IndexError block (random.choice on an empty list) to pick a valid client (who has an address).
+    adresses_client_ids = db.query(f"SELECT id, client_id FROM adresse_livraison WHERE client_id != '{oc_pizza_id}'")
+    adresse_id_client_id = [(row['id'], row['client_id']) for row in adresses_client_ids]
+
+    for _ in range(0, number):
+        # Pick a random tuple (adresse_id, client_id (corresponding to the address))
+        adresse_id, client_id = random.choice(adresse_id_client_id)
+
+        fake_commandes.append({'client_id': client_id,
+                               'adresse_livraison_id': adresse_id,
+                               'pizzeria_id': random.choice(pizzerias_ids),
+                               'responsable_id': random.choice(responsable_ids)
+                               })
+
+    return fake_commandes
 
 
 def _get_table_ids(db, table):
@@ -255,10 +283,14 @@ def main():
     # fake_stocks = stock_creation(db)
     # db.bulk_query('INSERT INTO stock (pizzeria_id, ingredient_id, quantite)'
     #               'VALUES (:pizzeria_id, :ingredient_id, :quantite)', fake_stocks)
-
+    #
     # fake_compositions = composition_creation(db)
     # db.bulk_query('INSERT INTO composition (pizza_id, ingredient_id, quantite)'
     #               'VALUES (:pizza_id, :ingredient_id, :quantite)', fake_compositions)
+    #
+    # fake_commandes = commande_creation(db, 20)
+    # db.bulk_query('INSERT INTO commande (client_id, adresse_livraison_id, pizzeria_id, responsable_id)'
+    #               'VALUES (:client_id, :adresse_livraison_id, :pizzeria_id, :responsable_id)', fake_commandes)
 
 
 if __name__ == '__main__':
