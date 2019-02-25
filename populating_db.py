@@ -237,9 +237,44 @@ def commande_creation(db, number):
     return fake_commandes
 
 
+def panier_creation(db, number):
+    fake_paniers = []
+    pizza_ids = _get_table_ids(db, 'pizza')
+    commande_ids = _get_table_ids(db, 'commande')
+
+    for _ in range(0, number):
+        commande_id = random.choice(commande_ids)
+        commande_ids.remove(commande_id)
+        pizza_ids_copy = pizza_ids.copy()  # To respect the UNIQUE constraint of one pizza type per command
+        for _ in range(0, random.randint(0, 3)):  # Between one and three pizzas type per panier
+            pizza = random.choice(pizza_ids_copy)
+            pizza_ids_copy.remove(pizza)
+            quantite = random.randint(1, 10)
+            prix = _get_total_sum(db, pizza, quantite)
+
+            fake_paniers.append({'type_pizza': pizza,
+                                 'numero_commande': commande_id,
+                                 'quantite': quantite,
+                                 'prix': prix})
+
+    return fake_paniers
+
+
+def _get_total_sum(db, pizza, quantity):
+    price_query = db.query(f"SELECT prix from pizza WHERE id = '{pizza}'")
+    price = [row['prix'] for row in price_query]
+    price = float(*price)
+    price = price * quantity
+
+    return round(price, 2)
+
+
 def _get_table_ids(db, table):
     rows = db.query(f'SELECT * from {table}')
-    ids = [row.id for row in rows]
+    try:
+        ids = [row.id for row in rows]
+    except AttributeError:  # For commande table
+        ids = [row.numero for row in rows]
 
     return ids
 
@@ -247,50 +282,54 @@ def _get_table_ids(db, table):
 def main():
     db = records.Database(f'postgres://{USERNAME}:{PASSWORD}@localhost/{DB_NAME}')
 
-    # fake_clients = clients_creation(10)
-    # db.bulk_query('INSERT INTO client (nom, prenom, mail) VALUES (:nom, :prenom, :mail)', fake_clients)
-    #
-    # fake_ingredients = ingredients_creation(10)
-    # db.bulk_query('INSERT INTO ingredient (nom) VALUES (:nom)', fake_ingredients)
-    #
-    # fake_pizzas = pizzas_creation(10)
-    # db.bulk_query('INSERT INTO pizza (nom, prix) VALUES (:nom, :prix)', fake_pizzas)
-    #
-    # fake_type_employe = type_employe_creation(5)
-    # db.bulk_query('INSERT INTO type_employe (nom_type) VALUES (:nom_type)', fake_type_employe)
-    #
-    # fake_factures = factures_creation(10)
-    # db.bulk_query('INSERT INTO facture (date, payee, lien) VALUES (:date, :payee, :lien)', fake_factures)
-    #
-    # fake_adresses = adresses_creation(db, 10)
-    # db.bulk_query('INSERT INTO adresse_livraison (client_id, code_postal, ville, rue, numero_habitation)'
-    #               'VALUES (:client_id, :code_postal, :ville, :rue, :numero_habitation)', fake_adresses)
-    #
-    # fake_recettes = recettes_creation(db)
-    # db.bulk_query('INSERT INTO recette (recette, pizza_id) VALUES (:recette, :pizza_id)', fake_recettes)
-    #
-    # fake_pizzerias = pizzerias_creation(db)
-    # db.bulk_query('INSERT INTO pizzeria (nom, adresse_id) VALUES (:nom, :adresse_id)', fake_pizzerias)
-    #
-    # fake_employes = employe_creation(db)
-    # db.bulk_query('INSERT INTO employe (nom, prenom, pizzeria_id, type_employe_id) '
-    #               'VALUES (:nom, :prenom, :pizzeria_id, :type_employe_id)', fake_employes)
-    #
-    # fake_compte_employes = compte_employe_creation(db)
-    # db.bulk_query('INSERT INTO compte_employe (employe_id, username, password)'
-    #               'VALUES (:employe_id, :username, :password)', fake_compte_employes)
-    #
-    # fake_stocks = stock_creation(db)
-    # db.bulk_query('INSERT INTO stock (pizzeria_id, ingredient_id, quantite)'
-    #               'VALUES (:pizzeria_id, :ingredient_id, :quantite)', fake_stocks)
-    #
-    # fake_compositions = composition_creation(db)
-    # db.bulk_query('INSERT INTO composition (pizza_id, ingredient_id, quantite)'
-    #               'VALUES (:pizza_id, :ingredient_id, :quantite)', fake_compositions)
-    #
-    # fake_commandes = commande_creation(db, 20)
-    # db.bulk_query('INSERT INTO commande (client_id, adresse_livraison_id, pizzeria_id, responsable_id)'
-    #               'VALUES (:client_id, :adresse_livraison_id, :pizzeria_id, :responsable_id)', fake_commandes)
+    fake_clients = clients_creation(10)
+    db.bulk_query('INSERT INTO client (nom, prenom, mail) VALUES (:nom, :prenom, :mail)', fake_clients)
+
+    fake_ingredients = ingredients_creation(10)
+    db.bulk_query('INSERT INTO ingredient (nom) VALUES (:nom)', fake_ingredients)
+
+    fake_pizzas = pizzas_creation(10)
+    db.bulk_query('INSERT INTO pizza (nom, prix) VALUES (:nom, :prix)', fake_pizzas)
+
+    fake_type_employe = type_employe_creation(5)
+    db.bulk_query('INSERT INTO type_employe (nom_type) VALUES (:nom_type)', fake_type_employe)
+
+    fake_factures = factures_creation(10)
+    db.bulk_query('INSERT INTO facture (date, payee, lien) VALUES (:date, :payee, :lien)', fake_factures)
+
+    fake_adresses = adresses_creation(db, 10)
+    db.bulk_query('INSERT INTO adresse_livraison (client_id, code_postal, ville, rue, numero_habitation)'
+                  'VALUES (:client_id, :code_postal, :ville, :rue, :numero_habitation)', fake_adresses)
+
+    fake_recettes = recettes_creation(db)
+    db.bulk_query('INSERT INTO recette (recette, pizza_id) VALUES (:recette, :pizza_id)', fake_recettes)
+
+    fake_pizzerias = pizzerias_creation(db)
+    db.bulk_query('INSERT INTO pizzeria (nom, adresse_id) VALUES (:nom, :adresse_id)', fake_pizzerias)
+
+    fake_employes = employe_creation(db)
+    db.bulk_query('INSERT INTO employe (nom, prenom, pizzeria_id, type_employe_id) '
+                  'VALUES (:nom, :prenom, :pizzeria_id, :type_employe_id)', fake_employes)
+
+    fake_compte_employes = compte_employe_creation(db)
+    db.bulk_query('INSERT INTO compte_employe (employe_id, username, password)'
+                  'VALUES (:employe_id, :username, :password)', fake_compte_employes)
+
+    fake_stocks = stock_creation(db)
+    db.bulk_query('INSERT INTO stock (pizzeria_id, ingredient_id, quantite)'
+                  'VALUES (:pizzeria_id, :ingredient_id, :quantite)', fake_stocks)
+
+    fake_compositions = composition_creation(db)
+    db.bulk_query('INSERT INTO composition (pizza_id, ingredient_id, quantite)'
+                  'VALUES (:pizza_id, :ingredient_id, :quantite)', fake_compositions)
+
+    fake_commandes = commande_creation(db, 20)
+    db.bulk_query('INSERT INTO commande (client_id, adresse_livraison_id, pizzeria_id, responsable_id)'
+                  'VALUES (:client_id, :adresse_livraison_id, :pizzeria_id, :responsable_id)', fake_commandes)
+
+    fake_paniers = panier_creation(db, 20)
+    db.bulk_query('INSERT INTO panier (type_pizza, numero_commande, quantite, prix)'
+                  'VALUES (:type_pizza, :numero_commande, :quantite, :prix)', fake_paniers)
 
 
 if __name__ == '__main__':
