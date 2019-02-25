@@ -98,7 +98,7 @@ def adresses_creation(db, number):
 
     # We are creating the addresses of the pizzerias that'll be used in the pizzeria table
     for _ in range(0, NUMBER_OF_PIZZERIAS):
-        fake_adresses.append({'client_id': oc_pizza_id,
+        fake_adresses.append({'client_id': oc_pizza_id.first().id,
                               'code_postal': f'{random.randint(1000, 99000):05}',
                               'ville': fake.city(),
                               'rue': fake.street_name(),
@@ -219,14 +219,14 @@ def commande_creation(db, number):
     oc_pizza_id = db.query("SELECT * FROM client WHERE nom = :owner", owner=PIZZERIAS_OWNER)
     client_ids = _get_table_ids(db, 'client')
     client_ids.remove(oc_pizza_id.first().id)
-    responsable_ids = _get_table_ids(db, 'employe')
+    pizzeria_ids = _get_table_ids(db, 'pizzeria')
 
     for _ in range(0, number):
-        responsable_id = random.choice(responsable_ids)
-        # Findind in which pizzeria the employe is working
-        pizzeria_id_query = db.query("SELECT pizzeria_id FROM employe WHERE id = :responsable_id",
-                                     responsable_id=responsable_id)
-        pizzeria_id = pizzeria_id_query.first().pizzeria_id
+        pizzeria_id = random.choice(pizzeria_ids)
+        # We get the employees working in the pizzeria_id
+        employe_ids_query = db.query("SELECT id FROM employe WHERE pizzeria_id = :pizzeria_id",
+                                     pizzeria_id=pizzeria_id)
+        employe_ids = [row.id for row in employe_ids_query]
 
         adresse_ids = []
         while not adresse_ids:  # In case the client doesn't have any address
@@ -238,7 +238,7 @@ def commande_creation(db, number):
         fake_commandes.append({'client_id': client_id,
                                'adresse_livraison_id': random.choice(adresse_ids),
                                'pizzeria_id': pizzeria_id,
-                               'responsable_id': random.choice(responsable_ids)
+                               'responsable_id': random.choice(employe_ids)
                                })
 
     return fake_commandes
@@ -286,8 +286,7 @@ def livraison_creation(db):
 
 def _get_total_sum(db, pizza, quantity):
     price_query = db.query("SELECT prix from pizza WHERE id = :pizza", pizza=pizza)
-    price = [row['prix'] for row in price_query]
-    price = float(*price)
+    price = price_query.first().prix
     price = price * quantity
 
     return round(price, 2)
