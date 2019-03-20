@@ -14,20 +14,23 @@ INGREDIENTS = "Coulis de tomate,Tabasco,Baparella,Oignons,Poivrons,Poulet,Crème
               "Crevettes,Persillade,Citron,Cheddar,Reblochon,Miel,Oeuf,Thon,Moutarde,Tomates,Cornichons," \
               "Lardons".split(",")
 
+STATUTS_COMMANDE = ["En attente", "En préparation", "En cours de livraison", "Terminée"]
+
 PIZZERIAS_OWNER = 'OC Pizza'
-NUMBER_OF_TYPE_EMPLOYEES = 5  # Livreur/Responsable Commande/Pizzaïolo etc...
+NUMBER_OF_TYPE_EMPLOYEES = 5  # Will be equivalent to Livreur - Responsable Commande - Pizzaïolo etc...
 NUMBER_OF_PIZZERIAS = 5
 NUMBER_OF_INGREDIENTS = 10  # Max 22
 NUMBER_OF_PIZZAS = 10  # Max 22
 NUMBER_OF_CLIENTS = 20
 NUMBER_OF_COMMANDES = 20
 
+
 fake = Faker('fr_FR')
 
 
 def clients_creation(number):
     # We are creating an "owner client" before adding the random ones
-    fake_clients = [{'nom': PIZZERIAS_OWNER, 'prenom': PIZZERIAS_OWNER, 'mail': fake.email()}]
+    fake_clients = [{'nom': PIZZERIAS_OWNER, 'prenom': PIZZERIAS_OWNER, 'mail': 'OCPizza@openclassrooms.com'}]
 
     for _ in range(1, number):
         fake_clients.append({'nom': fake.last_name(), 'prenom': fake.first_name(), 'mail': fake.email()})
@@ -186,13 +189,10 @@ def stock_creation(db):
 
     for pizzeria_id in pizzeria_ids:
         for ingredient_id in ingredient_ids:
-            if fake.boolean(chance_of_getting_true=75):  # To add some diversity between pizzerias
-                fake_stocks.append({'pizzeria_id': pizzeria_id,
-                                    'ingredient_id': ingredient_id,
-                                    'quantite': f'{random.uniform(1, 999):.6}'  # Between 1/999kg in stock
-                                    })
-            else:
-                pass
+            fake_stocks.append({'pizzeria_id': pizzeria_id,
+                                'ingredient_id': ingredient_id,
+                                'quantite': f'{random.uniform(0, 999):.6}'  # Between 0/999kg in stock
+                                })
 
     return fake_stocks
 
@@ -214,12 +214,22 @@ def composition_creation(db):
     return fake_compositions
 
 
+def statut_creation():
+    fake_statut = []
+
+    for statut in STATUTS_COMMANDE:
+        fake_statut.append({'statut': statut})
+
+    return fake_statut
+
+
 def commande_creation(db, number):
     fake_commandes = []
     oc_pizza_id = db.query("SELECT * FROM client WHERE nom = :owner", owner=PIZZERIAS_OWNER)
     client_ids = _get_table_ids(db, 'client')
     client_ids.remove(oc_pizza_id.first().id)
     pizzeria_ids = _get_table_ids(db, 'pizzeria')
+    statut_ids = _get_table_ids(db, 'statut_commande')
 
     for _ in range(0, number):
         pizzeria_id = random.choice(pizzeria_ids)
@@ -238,7 +248,8 @@ def commande_creation(db, number):
         fake_commandes.append({'client_id': client_id,
                                'adresse_livraison_id': random.choice(adresse_ids),
                                'pizzeria_id': pizzeria_id,
-                               'responsable_id': random.choice(employe_ids)
+                               'responsable_id': random.choice(employe_ids),
+                               'statut_id': random.choice(statut_ids)
                                })
 
     return fake_commandes
@@ -247,7 +258,7 @@ def commande_creation(db, number):
 def panier_creation(db, number):
     fake_paniers = []
     pizza_ids = _get_table_ids(db, 'pizza')
-    commande_ids = _get_table_ids(db, 'commande')
+    commande_ids = _get_table_ids(db, 'commande', pk="numero")
 
     for _ in range(0, number):
         commande_id = commande_ids.pop(random.randrange(len(commande_ids)))
@@ -267,8 +278,8 @@ def panier_creation(db, number):
 
 def livraison_creation(db):
     fake_livraisons = []
-    commandes_ids = _get_table_ids(db, 'commande')
-    factures_ids = _get_table_ids(db, 'facture')
+    commandes_ids = _get_table_ids(db, 'commande', pk="numero")
+    factures_ids = _get_table_ids(db, 'facture', pk="numero")
     livreur_ids = _get_table_ids(db, 'employe')
 
     for _ in range(0, NUMBER_OF_COMMANDES):
@@ -292,12 +303,15 @@ def _get_total_sum(db, pizza, quantity):
     return round(price, 2)
 
 
-def _get_table_ids(db, table):
+def _get_table_ids(db, table, pk="id"):
     rows = db.query(f'SELECT * from {table}')
-    try:
+    if pk == "id":
         ids = [row.id for row in rows]
-    except AttributeError:  # For commande/facture table
+    elif pk == "numero":  # For commande/facture table
         ids = [row.numero for row in rows]
+    else:
+        print(f"The column {pk} does not exists")
+        return []
 
     return ids
 
@@ -346,9 +360,13 @@ def main():
     db.bulk_query('INSERT INTO composition (pizza_id, ingredient_id, quantite)'
                   'VALUES (:pizza_id, :ingredient_id, :quantite)', fake_compositions)
 
+    fake_statuts = statut_creation()
+    db.bulk_query('INSERT INTO statut_commande (statut) VALUES (:statut)', fake_statuts)
+
     fake_commandes = commande_creation(db, NUMBER_OF_COMMANDES)
-    db.bulk_query('INSERT INTO commande (client_id, adresse_livraison_id, pizzeria_id, responsable_id)'
-                  'VALUES (:client_id, :adresse_livraison_id, :pizzeria_id, :responsable_id)', fake_commandes)
+    db.bulk_query('INSERT INTO commande (client_id, adresse_livraison_id, pizzeria_id, responsable_id, statut_id)'
+                  'VALUES (:client_id, :adresse_livraison_id, :pizzeria_id, '
+                  ':responsable_id, :statut_id)', fake_commandes)
 
     fake_paniers = panier_creation(db, NUMBER_OF_COMMANDES)
     db.bulk_query('INSERT INTO panier (type_pizza, numero_commande, quantite, prix)'
@@ -360,4 +378,5 @@ def main():
 
 
 if __name__ == '__main__':
+    # Wipe your DB if you want to populate it again ! README.md
     main()
